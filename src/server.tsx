@@ -1,4 +1,6 @@
-import express from 'express';
+import Koa from 'koa';
+import serve from 'koa-static';
+
 import path from 'path';
 import React from 'react';
 import { StaticRouter } from 'react-router-dom';
@@ -13,7 +15,8 @@ import { ApolloProvider, ApolloClient, HttpLink, InMemoryCache } from '@apollo/c
 
 const fetch = require('node-fetch');
 
-const app = express();
+// const app = express();
+const app = new Koa();
 
 if (process.env.NODE_ENV !== 'production') {
   /* eslint-disable global-require, import/no-extraneous-dependencies */
@@ -24,8 +27,8 @@ if (process.env.NODE_ENV !== 'production') {
     return config;
   });
 
-  const webpackDevMiddleware = require('webpack-dev-middleware');
-  const webpackHotMiddleware = require('webpack-hot-middleware');
+  const webpackDevMiddleware = require('koa-webpack-dev-middleware');
+  const webpackHotMiddleware = require('koa-webpack-hot-middleware');
   /* eslint-enable global-require, import/no-extraneous-dependencies */
   /* eslint-enable no-param-reassign */
 
@@ -42,9 +45,13 @@ if (process.env.NODE_ENV !== 'production') {
   app.use(webpackHotMiddleware(compiler));
 }
 
-app.use(express.static(path.resolve(__dirname)));
+app.use(
+  serve(path.resolve(__dirname), {
+    index: false,
+  }),
+);
 
-app.get('*', (req, res) => {
+app.use((ctx, next) => {
   const nodeStats = path.resolve(__dirname, './node/loadable-stats.json');
   const webStats = path.resolve(__dirname, './web/loadable-stats.json');
   const nodeExtractor = new ChunkExtractor({ statsFile: nodeStats });
@@ -65,7 +72,7 @@ app.get('*', (req, res) => {
   const jsx = webExtractor.collectChunks(
     <ApolloProvider client={client}>
       <Provider store={store}>
-        <StaticRouter location={req.url} context={context}>
+        <StaticRouter location={ctx.url} context={context}>
           <App />
         </StaticRouter>
       </Provider>
@@ -74,9 +81,12 @@ app.get('*', (req, res) => {
 
   const html = renderToString(jsx);
   const helmet = Helmet.renderStatic();
+  if (!html) {
+    return next();
+  }
 
-  res.set('content-type', 'text/html');
-  res.send(`
+  ctx.set('content-type', 'text/html');
+  ctx.body = `
     <!DOCTYPE html>
       <html lang="en">
         <head>
@@ -91,7 +101,7 @@ app.get('*', (req, res) => {
           ${webExtractor.getScriptTags()}
         </body>
       </html>
-  `);
+  `;
 });
 
 app.listen(3003, () => console.log('Server started http://localhost:3003'));
